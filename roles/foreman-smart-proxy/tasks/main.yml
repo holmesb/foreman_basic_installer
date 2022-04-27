@@ -38,20 +38,20 @@
     name: "https://yum.puppetlabs.com/puppet{{ puppet_version }}/puppet{{ puppet_version }}-release-el-7.noarch.rpm"
     state: present
     validate_certs: no
-  when: inventory_hostname !=  foreman_host # we assume repos are already insalled if also foreman_host
+  when: inventory_hostname != foreman_host # we assume repos are already insalled on proxy if also a foreman_host
 
 - name: Install foreman repo
   yum:
     name: "https://yum.theforeman.org/releases/{{ foreman_version }}/el7/x86_64/foreman-release.rpm"
     state: present
     validate_certs: no
-  when: inventory_hostname !=  foreman_host # we assume repos are already insalled if also foreman_host
+  when: inventory_hostname != foreman_host # we assume repos are already insalled on proxy if also a foreman_host
 
 - name: Add other repos
   rhsm_repository:
     name: "{{ item }}"
   with_list: "{{ yum_repos }}"
-  when: inventory_hostname !=  foreman_host # we assume repos are already insalled if also foreman_host
+  when: inventory_hostname != foreman_host # we assume repos are already insalled on proxy if also a foreman_host
 
 - name: Update yum cache and install system updates
   yum:
@@ -180,6 +180,39 @@
   args:
     executable: /bin/bash
   when: proxy_tftp
+  notify:
+  - Recursively change ownership of a puppet private keys dir
+
+- name: Update Host File
+  lineinfile:
+    path: /etc/dhcp/dhcpd.conf
+    regexp: "^{{ hostvars[item].ipaddress }}"
+    line: "{{ hostvars[item].ipaddress }} {{ item }}"
+    state: present
+  with_items: "{{ groups['all'] }}"
+  when: proxy_dhcp
+
+- name: Add single-host subnet to DHCP configuration for proxy, otherwise isc-dhcp-server service fails to start
+  blockinfile:
+    path: /etc/dhcp/dhcpd.conf
+    block: |
+      subnet "{{ ipaddress }}" netmask 255.255.255.255 {}"
+
+- name: Create /etc/dhcp/dhcpd.conf if it doesn't exist
+  ansible.builtin.file:
+    path: /etc/dhcp/dhcpd.conf
+    state: touch
+    owner: root
+    group: foreman-proxy
+  when: proxy_dhcp
+
+- name: Add single-host subnet to DHCP configuration for proxy, otherwise isc-dhcp-server service fails to start
+  ansible.builtin.shell: watch -n 2 'grep -qF subnet\ {{ ipaddress }} /etc/dhcp/dhcpd.conf || echo "subnet {{ ipaddress }} netmask 255.255.255.255 {}" | tee -a /etc/dhcp/dhcpd.conf'\
+  async: 120
+  poll: 0
+  retries: 100
+  delay: 2
+  when: proxy_dhcp
 
 - name: Install proxy-dhcp
   shell: >
@@ -189,16 +222,39 @@
         --foreman-proxy-httpboot true
         --foreman-proxy-dhcp=true
         --foreman-proxy-dhcp-interface={{ dhcp_interface }}
+        --foreman-proxy-dhcp-network={{ dhcp_subnets }}
+        --foreman-proxy-dhcp-netmask {{ dhcp_netmask }}
         --foreman-proxy-dhcp-range="{{ dhcp_range }}"
         --foreman-proxy-dhcp-gateway="{{ dhcp_gateway }}"
         --foreman-proxy-dhcp-pxeserver="{{ dhcp_pxeserver }}"
         --foreman-proxy-dhcp-nameservers="{{ dhcp_nameservers }}"
-        --foreman-proxy-dhcp-subnets="{{ dhcp_subnets }}"
         --foreman-proxy-foreman-base-url="https://{{ foreman_host }}"
         --foreman-proxy-trusted-hosts={{ foreman_host }}
-        --foreman-proxy-register-in-foreman=false 
+        --foreman-proxy-register-in-foreman=false
+        --foreman-proxy-dhcp-network={{ dhcp_subnets }}
   args:
     executable: /bin/bash
+  when: proxy_dhcp
+  ignore_errors: yes
+  notify:
+  - Recursively change ownership of a puppet private keys dir
+
+- name: Render dhcpd template file
+  ansible.builtin.template:
+    src: dhcpd.service.j2
+    dest: /usr/lib/systemd/system/dhcpd.service
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Reload systemd services
+  ansible.builtin.systemd:
+    daemon_reload: yes
+
+- name: Start service dhcpd, if not started
+  ansible.builtin.service:
+    name: dhcpd
+    state: started
   when: proxy_dhcp
 
 - name: Install proxy-discovery
@@ -216,6 +272,8 @@
   args:
     executable: /bin/bash
   when: proxy_discovery
+  notify:
+  - Recursively change ownership of a puppet private keys dir
 
 - name: Install proxy-openscap
   shell: >
@@ -230,6 +288,8 @@
   args:
     executable: /bin/bash
   when: proxy_openscap
+  notify:
+  - Recursively change ownership of a puppet private keys dir
 
 - name: Install proxy-remote-execution
   shell: >
@@ -244,6 +304,8 @@
   args:
     executable: /bin/bash
   when: proxy_remote_execution
+  notify:
+  - Recursively change ownership of a puppet private keys dir
 
 - name: Install proxy-ansible
   shell: >
@@ -258,6 +320,8 @@
   args:
     executable: /bin/bash
   when: proxy_ansible
+  notify:
+  - Recursively change ownership of a puppet private keys dir
 
 - name: Install proxy-templates
   shell: >
@@ -274,6 +338,8 @@
   args:
     executable: /bin/bash
   when: proxy_templates
+  notify:
+  - Recursively change ownership of a puppet private keys dir
 
 - name: Install proxy-bmc
   shell: >
@@ -288,6 +354,8 @@
   args:
     executable: /bin/bash
   when: proxy_bmc
+  notify:
+  - Recursively change ownership of a puppet private keys dir
 
 - name: Restart Foreman Proxy
   service:
@@ -316,24 +384,29 @@
     name: "lighttpd"
     state: present
     validate_certs: no
+  when: media_server_enabled
 
 - name: Copy lighttpd.conf to smart proxy (listen on port 81)
   copy:
     src: lighttpd.conf
     dest: /etc/lighttpd/lighttpd.conf
+  when: media_server_enabled
 
 - name: Copy dirlisting.conf to smart proxy
   copy:
     src: dirlisting.conf
     dest: /etc/lighttpd/conf.d/dirlisting.conf
+  when: media_server_enabled
 
 - name: Start and enable webserver
   service:
     name: lighttpd
     state: restarted
     enabled: yes
+  when: media_server_enabled
 
 - name: Create images directory in web root
   file:
     path: /var/www/lighttpd/media
     state: directory
+  when: media_server_enabled

@@ -1,0 +1,15 @@
+[Unit]
+Description=DHCPv4 Server Daemon
+Documentation=man:dhcpd(8) man:dhcpd.conf(5)
+Wants=network-online.target
+After=network-online.target
+After=time-sync.target
+
+[Service]
+Type=notify
+PermissionsStartOnly=true
+ExecStartPre=-/bin/bash -c '/bin/grep -qF subnet\ {{ ipaddress }} /etc/dhcp/dhcpd.conf || echo "subnet {{ ipaddress }} netmask 255.255.255.255 {}" | tee -a /etc/dhcp/dhcpd.conf'
+ExecStart=/usr/sbin/dhcpd -f -cf /etc/dhcp/dhcpd.conf -user dhcpd -group dhcpd --no-pid
+
+[Install]
+WantedBy=multi-user.target

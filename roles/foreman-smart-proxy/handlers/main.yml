@@ -1,0 +1,7 @@
+- name: Recursively change ownership of a puppet private keys dir
+  ansible.builtin.file:
+    path: /etc/puppetlabs/puppet/ssl/private_keys
+    state: directory
+    recurse: yes
+    owner: puppet
+    group: foreman
