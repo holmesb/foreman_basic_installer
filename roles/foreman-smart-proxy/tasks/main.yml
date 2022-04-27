@@ -370,23 +370,12 @@
   notify:
   - Recursively change ownership of a puppet private keys dir
 
-- name: Configure DHCP to use iPXE
-  blockinfile:
-    path: /etc/dhcp/dhcpd.conf
-    insertafter: 'filename "pxelinux.0"[\r\n]+}'
-    block: |
-      if exists user-class and option user-class = "iPXE" {
-        filename "http://uk1sxlx00219.corpnet2.com/unattended/iPXE?bootstrap=1";  # Replace with actual FQDN of Foreman Server
-      } elsif option architecture = 00:06 {
-        filename "ipxe.efi";
-      } elsif option architecture = 00:07 {
-        filename "snp.efi";
-      } elsif option architecture = 00:09 {
-        filename "ipxe.efi";
-      } else {
-        filename "undionly.kpxe";
-      }
-  notify: Restart DHCP service
+- name: Allow tftpd in TCP Wrapper
+  ansible.builtin.lineinfile:
+    path: /etc/hosts.allow
+    line: 'in.tftpd:       ALL'
+    create: yes
+
 
 - name: Restart Foreman Proxy
   service:

@@ -1,0 +1,51 @@
+- name: ftp - install vsftp
+  ansible.builtin.package:
+    name: vsftpd
+    state: present
+  when: not config_only
+
+- name: Create a directory if it does not exist
+  ansible.builtin.file:
+    path: /var/ftp/ESXi-{{ vmware_esxi_version }}
+    state: directory
+    mode: '0755'
+
+- name: ftp - Copy default boot config file
+  ansible.builtin.copy:
+    src: /var/ftp/ESXi-{{ vmware_esxi_version }}/boot.cfg
+    dest: /var/ftp/ESXi-{{ vmware_esxi_version }}/boot-ESXi-{{ vmware_esxi_version }}.cfg
+    remote_src: yes
+
+- name: ftp - Add foreman server fqdn to esxi cfg file
+  ansible.builtin.lineinfile:
+    path: /var/ftp/ESXi-{{ vmware_esxi_version }}/boot-ESXi-{{ vmware_esxi_version }}.cfg
+    regexp: '^prefix='
+    line: prefix=ftp://{{ foreman_host }}/ESXi-{{ vmware_esxi_version }}
+    create: yes
+
+- name: ftp - create vsftp anon config
+  lineinfile:
+    path: /etc/vsftpd/vsftpd-anon.conf
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+  loop:
+    - { regexp: '^listen=', line: 'listen=YES' }
+    - { regexp: '^local_enable=', line: 'local_enable=NO' }
+    - { regexp: '^anonymous_enable=', line: 'anonymous_enable=YES' }
+    - { regexp: '^write_enable=', line: 'write_enable=NO' }
+    - { regexp: '^anon_root=', line: 'anon_root=/var/ftp' }
+    - { regexp: '^xferlog_enable=', line: 'xferlog_enable=YES' }
+    - { regexp: '^listen_address=', line: 'listen_address=0.0.0.0' }
+    - { regexp: '^listen_port=', line: 'listen_port=21' }
+
+- name: ftp - create vsftp anon service
+  lineinfile:
+    path: /usr/lib/systemd/system/vsftpd.service
+    regexp: '^ExecStart='
+    line: ExecStart=/sbin/vsftpd /etc/vsftpd/vsftpd-anon.conf
+
+- name: ftp - start service
+  ansible.builtin.systemd:
+    name: vsftpd
+    state: started
+    daemon_reload: yes
