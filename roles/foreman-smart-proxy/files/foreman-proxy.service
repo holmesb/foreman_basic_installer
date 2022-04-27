@@ -1,0 +1,15 @@
+[Unit]
+Description=Foreman Proxy
+Wants=basic.target
+After=basic.target network.target
+
+[Service]
+Type=notify
+User=foreman-proxy
+PermissionsStartOnly=true
+ExecStartPre=/usr/bin/chown -R puppet:foreman /etc/puppetlabs/puppet/ssl/private_keys
+ExecStart=/usr/share/foreman-proxy/bin/smart-proxy --no-daemonize
+EnvironmentFile=-/etc/sysconfig/foreman-proxy
+
+[Install]
+WantedBy=multi-user.target

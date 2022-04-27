@@ -1,0 +1,24 @@
+## Enable additional Foreman server functionality
+ansible_plugin: false
+remote_execution_plugin: false
+discovery_plugin: false
+openscap_plugin: false
+hooks_plugin: false
+tasks_plugin: false
+templates_plugin: false
+expire_hosts_plugin: false
+vmware_plugin: false
+kubevirt_plugin: false
+digitalocean_plugin: false
+ec2_plugin: false
+gce_plugin: false
+libvirt_plugin: false
+openstack_plugin: false
+ovirt_plugin: false
+rackspace_plugin: false
+
+foreman_yum_package_version: 3.2.0-1
+puppet_version: 7
+disable_firewall: true
+foreman_version: 3.2
+media_server_enabled: false
