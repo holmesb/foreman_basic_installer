@@ -10,13 +10,6 @@
     state: present
   with_items: "{{ groups['all'] }}"
 
-#- name: Create a 2048-bit SSH key for root user
-#  user:
-#    name: root
-#    generate_ssh_key: yes
-#    ssh_key_bits: 2048
-#    ssh_key_file: .ssh/id_rsa
-
 - name: Set Hostname
   shell: "hostnamectl set-hostname {{ inventory_hostname }}"
   args:
@@ -27,18 +20,24 @@
     name: "https://yum.puppet.com/puppet{{ puppet_version }}-release-el-{{ puppet_version }}.noarch.rpm"
     state: present
     validate_certs: no
+  when:
+    - not config_only
 
 - name: Install foreman repo
   yum:
     name: "https://yum.theforeman.org/releases/{{ foreman_version }}/el7/x86_64/foreman-release.rpm"
     state: present
     validate_certs: no
+  when:
+    - not config_only
 
 - name: Add other repos
   rhsm_repository:
     name: "{{ item }}"
   with_list: "{{ yum_repos }}"
-  when: yum_repos
+  when:
+    - yum_repos
+    - not config_only
 
 - name: Create /opt/scripts directory
   file:
@@ -85,7 +84,9 @@
     name: "*"
     state: latest
     update_cache: yes
-  when: ansible_distribution == "CentOS"
+  when:
+    - not config_only
+    - ansible_distribution == "CentOS"
 
 - name: Stop firewalld
   service:
@@ -104,6 +105,8 @@
     name: foreman-installer-{{ foreman_yum_package_version }}.el7.noarch
     state: present
     validate_certs: no
+  when:
+    - not config_only
 
 - name: Create foreman directories since when they're created by foreman-installer, they're permissioned wrongly and installer errors
   file:
@@ -136,16 +139,20 @@
     - /etc/puppetlabs/puppet/ssl/private_keys
     - /etc/puppetlabs/puppetserver
 
-- name: Replace CA cert path during install
+- name: Replace CA cert path during install otherwise SSL errors
   replace:
     path: /etc/httpd/conf.d/05-foreman-ssl.conf
     regexp: '^(\s*)SSLCACertificateFile.*'
     replace: '\1SSLCACertificateFile    "/etc/pki/tls/certs/ca-bundle.crt"'
+  when:
+    - not config_only
 
 - name: setup foreman standalone
   shell: "{{ lookup('template', 'install-foreman.j2') }}"
   args:
     executable: /bin/bash
+  when:
+    - not config_only
 
 - name: Enable foreman-proxy service
   ansible.builtin.systemd:
@@ -155,107 +162,142 @@
 
 - name: Enable foreman discovery plugin
   shell: "foreman-installer --enable-foreman-plugin-discovery --enable-foreman-cli-discovery"
-  when: discovery_plugin
+  when:
+    - discovery_plugin
+    - not config_only
   args:
     executable: /bin/bash
 
 - name: Enable foreman ansible plugin
   shell: "foreman-installer --enable-foreman-plugin-ansible --enable-foreman-cli-ansible"
-  when: ansible_plugin
+  when:
+    - ansible_plugin
+    - not config_only
   args:
     executable: /bin/bash
 
 - name: Enable foreman remote execution plugin
   shell: "foreman-installer --enable-foreman-plugin-remote-execution --enable-foreman-cli-remote-execution"
-  when: remote_execution_plugin
+  when:
+    - remote_execution_plugin
+    - not config_only
   args:
     executable: /bin/bash
 
 - name: Enable foreman openscap plugin
   shell: "foreman-installer --enable-foreman-plugin-openscap --enable-foreman-cli-openscap"
-  when: openscap_plugin
+  when:
+    - openscap_plugin
+    - not config_only
   args:
     executable: /bin/bash
 
 - name: Enable foreman hooks plugin
   shell: "foreman-installer --enable-foreman-plugin-remote-execution --enable-foreman-cli-remote-execution"
-  when: hooks_plugin
+  when:
+    - hooks_plugin
+    - not config_only
   args:
     executable: /bin/bash
 
 - name: Enable foreman tasks plugin
   shell: "foreman-installer --enable-foreman-plugin-tasks --enable-foreman-cli-tasks"
-  when: tasks_plugin
+  when:
+    - tasks_plugin
+    - not config_only
   args:
     executable: /bin/bash
 
 - name: Enable foreman templates plugin
   shell: "foreman-installer --enable-foreman-plugin-templates --enable-foreman-cli-templates"
-  when: templates_plugin
+  when:
+   - templates_plugin
+   - not config_only
   args:
     executable: /bin/bash
 
 - name: Enable foreman expire hosts plugin
   shell: "foreman-installer --enable-foreman-plugin-expire-hosts"
-  when: expire_hosts_plugin
+  when:
+   - expire_hosts_plugin
+   - not config_only
   args:
     executable: /bin/bash
-  
+
 - name: Enable foreman vmware plugin
   shell: "foreman-installer --enable-foreman-compute-vmware"
-  when: vmware_plugin
+  when:
+    - vmware_plugin
+    - not config_only
   args:
     executable: /bin/bash
 
 - name: Enable foreman kubevirt plugin
   shell: "foreman-installer --enable-foreman-cli-kubevirt --enable-foreman-plugin-kubevirt"
-  when: kubevirt_plugin
+  when:
+    - kubevirt_plugin
+    - not config_only
   args:
     executable: /bin/bash
 
 - name: Enable foreman digital ocean plugin
   shell: "foreman-installer --enable-foreman-plugin-digitalocean"
-  when: digitalocean_plugin
+  when:
+    - digitalocean_plugin
+    - not config_only
   args:
     executable: /bin/bash
 
 - name: Enable foreman ec2 plugin
   shell: "foreman-installer --enable-foreman-compute-ec2"
-  when: ec2_plugin
+  when:
+    - ec2_plugin
+    - not config_only
   args:
     executable: /bin/bash
 
 - name: Enable foreman gce plugin
   shell: "foreman-installer --enable-foreman-compute-gce"
-  when: gce_plugin
+  when:
+    - gce_plugin
+    - not config_only
   args:
     executable: /bin/bash
 
 - name: Enable foreman libvirt plugin
   shell: "foreman-installer --enable-foreman-compute-libvirt"
-  when: libvirt_plugin
+  when:
+    - libvirt_plugin
+    - not config_only
   args:
     executable: /bin/bash
 
 - name: Enable foreman openstack plugin
   shell: "foreman-installer --enable-foreman-compute-openstack"
-  when: openstack_plugin
+  when:
+    - openstack_plugin
+    - not config_only
   args:
     executable: /bin/bash
 
 - name: Enable foreman ovirt plugin
   shell: "foreman-installer --enable-foreman-compute-ovirt"
-  when: ovirt_plugin
+  when:
+    - ovirt_plugin
+    - not config_only
   args:
     executable: /bin/bash
-  
+
 - name: Enable foreman rackspace plugin
   shell: "foreman-installer --enable-foreman-compute-rackspace"
-  when: rackspace_plugin
   args:
     executable: /bin/bash
+  when:
+    - rackspace_plugin
+    - not config_only
 
 - name: Restart Foreman
   service:
     name: httpd
     state: restarted
+  when: not config_only

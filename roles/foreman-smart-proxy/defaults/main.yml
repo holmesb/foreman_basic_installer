@@ -6,3 +6,4 @@ foreman_yum_package_version: 3.2.0-1
 puppet_version: 7
 disable_firewall: true
 foreman_version: 3.2
+config_only: false

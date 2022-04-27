@@ -38,27 +38,35 @@
     name: "https://yum.puppetlabs.com/puppet{{ puppet_version }}/puppet{{ puppet_version }}-release-el-7.noarch.rpm"
     state: present
     validate_certs: no
-  when: inventory_hostname != foreman_host # we assume repos are already insalled on proxy if also a foreman_host
+  when:
+    - inventory_hostname != foreman_host # we assume repos are already insalled on proxy if also a foreman_host
+    - not config_only
 
 - name: Install foreman repo
   yum:
     name: "https://yum.theforeman.org/releases/{{ foreman_version }}/el7/x86_64/foreman-release.rpm"
     state: present
     validate_certs: no
-  when: inventory_hostname != foreman_host # we assume repos are already insalled on proxy if also a foreman_host
+  when:
+    - inventory_hostname != foreman_host # we assume repos are already insalled on proxy if also a foreman_host
+    - not config_only
 
 - name: Add other repos
   rhsm_repository:
     name: "{{ item }}"
   with_list: "{{ yum_repos }}"
-  when: inventory_hostname != foreman_host # we assume repos are already insalled on proxy if also a foreman_host
+  when:
+   - inventory_hostname != foreman_host # we assume repos are already insalled on proxy if also a foreman_host
+   - not config_only
 
 - name: Update yum cache and install system updates
   yum:
     name: "*"
     state: latest
     update_cache: yes
-  when: ansible_distribution == "CentOS"
+  when:
+   - ansible_distribution == "CentOS"
+   - not config_only
 
 - name: Stop firewalld
   service:
@@ -77,12 +85,14 @@
     name: foreman-installer
     state: present
     validate_certs: no
+  when: not config_only
 
 - name: Install dnsmasq
   yum:
     name: dnsmasq
     state: present
     validate_certs: no
+  when: not config_only
 
 - name: Start and enable dnsmasq
   service:
@@ -90,7 +100,7 @@
     state: started
     enabled: yes
 
-- name: Create puppet directories since when they're created by foreman-installer, they're permissioned wrongly
+- name: Create puppet directories because when they're created by foreman-installer, they're permissioned wrongly
   file:
     path: "{{ item }}"
     state: directory
@@ -105,14 +115,6 @@
     name: foreman-proxy
     groups: foreman
     append: yes
-
-
-- name: Installing proxy fails unless permissioned to foreman, and foreman-installer changes wrongly itself
-  ansible.builtin.command: watch -n 1 chown -R puppet:foreman /etc/puppetlabs/puppet/ssl/private_keys/
-  async: 120
-  poll: 0
-  retries: 100
-  delay: 2
 
 - name: Install foreman smart proxy
   shell: >
@@ -133,7 +135,9 @@
         --foreman-proxy-register-in-foreman=false
   args:
     executable: /bin/bash
-  when: inventory_hostname !=  foreman_host
+  when:
+    - inventory_hostname != foreman_host
+    - not config_only
 
 - name: Install foreman smart proxy - Same Host
   shell: >
@@ -147,7 +151,9 @@
         --verbose-log-level
   args:
     executable: /bin/bash
-  when: inventory_hostname ==  foreman_host
+  when:
+    - inventory_hostname == foreman_host
+    - not config_only
 
 - name: Copy systemd file containing pre command to permission private_keys dir correctly
   ansible.builtin.copy:
@@ -179,24 +185,17 @@
         --foreman-proxy-tftp-managed true
   args:
     executable: /bin/bash
-  when: proxy_tftp
+  when:
+    - proxy_tftp
+    - not config_only
   notify:
   - Recursively change ownership of a puppet private keys dir
 
-- name: Update Host File
-  lineinfile:
-    path: /etc/dhcp/dhcpd.conf
-    regexp: "^{{ hostvars[item].ipaddress }}"
-    line: "{{ hostvars[item].ipaddress }} {{ item }}"
-    state: present
-  with_items: "{{ groups['all'] }}"
-  when: proxy_dhcp
-
-- name: Add single-host subnet to DHCP configuration for proxy, otherwise isc-dhcp-server service fails to start
-  blockinfile:
-    path: /etc/dhcp/dhcpd.conf
-    block: |
-      subnet "{{ ipaddress }}" netmask 255.255.255.255 {}"
+#- name: Add single-host subnet to DHCP configuration for proxy, otherwise isc-dhcp-server service fails to start
+#  blockinfile:
+#    path: /etc/dhcp/dhcpd.conf
+#    block: |
+#      subnet "{{ ipaddress }}" netmask 255.255.255.255 {}"
 
 - name: Create /etc/dhcp/dhcpd.conf if it doesn't exist
   ansible.builtin.file:
@@ -234,7 +233,9 @@
         --foreman-proxy-dhcp-network={{ dhcp_subnets }}
   args:
     executable: /bin/bash
-  when: proxy_dhcp
+  when:
+    - proxy_dhcp
+    - not config_only
   ignore_errors: yes
   notify:
   - Recursively change ownership of a puppet private keys dir
@@ -271,7 +272,9 @@
         --foreman-proxy-register-in-foreman=false 
   args:
     executable: /bin/bash
-  when: proxy_discovery
+  when:
+    - proxy_discovery
+    - not config_only
   notify:
   - Recursively change ownership of a puppet private keys dir
 
@@ -287,7 +290,9 @@
         --foreman-proxy-register-in-foreman=false 
   args:
     executable: /bin/bash
-  when: proxy_openscap
+  when:
+    - proxy_openscap
+    - not config_only
   notify:
   - Recursively change ownership of a puppet private keys dir
 
@@ -303,7 +308,9 @@
         --foreman-proxy-register-in-foreman=false 
   args:
     executable: /bin/bash
-  when: proxy_remote_execution
+  when:
+    - proxy_remote_execution
+    - not config_only
   notify:
   - Recursively change ownership of a puppet private keys dir
 
@@ -319,7 +326,9 @@
         --foreman-proxy-register-in-foreman=false
   args:
     executable: /bin/bash
-  when: proxy_ansible
+  when:
+    - proxy_ansible
+    - not config_only
   notify:
   - Recursively change ownership of a puppet private keys dir
 
@@ -337,7 +346,9 @@
         --foreman-proxy-register-in-foreman=false 
   args:
     executable: /bin/bash
-  when: proxy_templates
+  when:
+    - proxy_templates
+    - not config_only
   notify:
   - Recursively change ownership of a puppet private keys dir
 
@@ -353,9 +364,29 @@
         --foreman-proxy-register-in-foreman=false
   args:
     executable: /bin/bash
-  when: proxy_bmc
+  when:
+    - proxy_bmc
+    - not config_only
   notify:
   - Recursively change ownership of a puppet private keys dir
+
+- name: Configure DHCP to use iPXE
+  blockinfile:
+    path: /etc/dhcp/dhcpd.conf
+    insertafter: 'filename "pxelinux.0"[\r\n]+}'
+    block: |
+      if exists user-class and option user-class = "iPXE" {
+        filename "http://uk1sxlx00219.corpnet2.com/unattended/iPXE?bootstrap=1";  # Replace with actual FQDN of Foreman Server
+      } elsif option architecture = 00:06 {
+        filename "ipxe.efi";
+      } elsif option architecture = 00:07 {
+        filename "snp.efi";
+      } elsif option architecture = 00:09 {
+        filename "ipxe.efi";
+      } else {
+        filename "undionly.kpxe";
+      }
+  notify: Restart DHCP service
 
 - name: Restart Foreman Proxy
   service:
@@ -384,7 +415,9 @@
     name: "lighttpd"
     state: present
     validate_certs: no
-  when: media_server_enabled
+  when:
+    - media_server_enabled
+    - not config_only
 
 - name: Copy lighttpd.conf to smart proxy (listen on port 81)
   copy:
@@ -410,3 +443,4 @@
     path: /var/www/lighttpd/media
     state: directory
   when: media_server_enabled
+
