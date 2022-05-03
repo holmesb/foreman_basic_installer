@@ -1,0 +1,33 @@
+- name: ftp_add_ipxe_os - Copy default boot config file
+  ansible.builtin.copy:
+    src: /var/ftp/{{ item.os_version }}/boot.cfg
+    dest: /var/ftp/boot-{{ item.os_version }}.cfg
+    remote_src: yes
+
+- name: ftp_add_ipxe_os - Add foreman server fqdn to boot cfg file
+  ansible.builtin.lineinfile:
+    path: /var/ftp/boot-{{ item.os_version}}.cfg
+    regexp: '^prefix='
+    line: prefix=ftp://{{ foreman_host }}/{{ item.os_version }}
+    create: yes
+
+- name: ftp_add_ipxe_os - Add foreman server fqdn to boot cfg file
+  ansible.builtin.lineinfile:
+    path: /var/ftp/boot-{{ item.os_version}}.cfg
+    regexp: '^kernel='
+    line: kernel=ftp://{{ foreman_host }}/{{ item.os_version }}/b.b00
+    create: yes
+
+- name: ftp_add_ipxe_os - Retrieve boot configuration file locally since ansible ini module cannot operate on remote files
+  fetch:
+    src: /var/ftp/boot-{{ item.os_version }}.cfg
+    dest: /tmp
+
+- name: ftp_add_ipxe_os - set modules variable
+  set_fact: modules="{{ lookup('ini', 'modules type=properties file=/tmp/{{ foreman_host }}/var/ftp/boot-{{ item.os_version }}.cfg') | replace('/','') }}"
+
+- name: ftp_add_ipxe_os - replace modules value with string minus forward slashes
+  ansible.builtin.lineinfile:
+    path: /var/ftp/boot-{{ item.os_version }}.cfg
+    regexp: '^modules='
+    line: modules={{ modules }}

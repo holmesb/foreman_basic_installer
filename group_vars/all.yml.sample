@@ -1,6 +1,6 @@
 ---
 ## Foreman Settings
-foreman_password: "demo.com"
+password_foreman: "demo.com"
 foreman_url: "https://foreman.demo.com"
 foreman_host: "foreman.demo.com"
 disable_firewall: true

@@ -15,15 +15,11 @@
         filename "undionly.kpxe";
       }
   notify: Restart DHCP service
-  when: ipxe_enabled
 
 - name: ipxe - clone_ipxe - check if ipxe dir already exists
   stat:
     path: /tmp/ipxe
   register: ipxe_dir
-  when:
-    - not config_only
-    - ipxe_enabled
 
 - name: ipxe - clone_ipxe - check ipxe current branch
   shell: >
@@ -31,8 +27,6 @@
     git branch |head -n1
   register: ipxe_current_branch
   when:
-    - ipxe_enabled
-    - not config_only
     - ipxe_dir.stat.exists
 
 - name: ipxe - clone_ipxe - get ipxe directory status
@@ -40,9 +34,6 @@
     paths: /tmp/ipxe
     file_type: directory
   register: ipxe_directory
-  when:
-    - ipxe_enabled
-    - not config_only
 
 - name: ipxe - clone_ipxe - hard-reset ipxe HEAD to desired commit
   shell: >
@@ -51,8 +42,6 @@
     git reset --hard {{ ipxe_git_commit_checksum }}
   register: ipxe_switch_head
   when:
-    - ipxe_enabled
-    - not config_only
     - not ipxe_git_commit_checksum[:7] in ipxe_current_branch.stdout
     - ipxe_dir.stat.exists
     - ipxe_directory.examined != 0  # when not empty
@@ -63,17 +52,19 @@
     cd /tmp/ipxe &&
     git checkout "{{ ipxe_git_commit_checksum }}"
   when:
-    - ipxe_enabled
-    - not config_only
     - (not ipxe_dir.stat.exists) or (ipxe_directory.examined == 0)  # when empty
 
 - name: ipxe - Patch ipxe to enable FTP functionality
   ansible.builtin.lineinfile:
-    path: /tmp/ipxe/src/config/general.h
+    path: /tmp/ipxe/src/config/local/general.h
     regexp: '^.*DOWNLOAD_PROTO_FTP'
     line: "#define  DOWNLOAD_PROTO_FTP"
-  when:
-    - not config_only
+
+- name: ipxe - Patch ipxe to enable Syslinux Comboot support
+  ansible.builtin.lineinfile:
+    path: /tmp/ipxe/src/config/local/general.h
+    regexp: '^.*IMAGE_COMBOOT'
+    line: "#define  IMAGE_COMBOOT"
 
 - name: ipxe - Patch ipxe to increase MAX_MODULES
   ansible.builtin.lineinfile:
@@ -81,15 +72,13 @@
     regexp: '^.*MAX_MODULES 8'
     line: "#define MAX_MODULES 100"
   when:
-    - not config_only
+    - ipxe_enabled
 
 - name: ipxe - Checksum bin/undionly.kpxe
   ansible.builtin.stat:
     path: /tmp/ipxe/src/bin/undionly.kpxe
     get_checksum: yes
   register: undionly_file_info
-  when:
-    - not config_only
 
 - name: ipxe - initialise undionly_checksum_from_file
   set_fact: undionly_checksum_from_file=init
@@ -97,7 +86,6 @@
 - name: ipxe - set checksum if undionly file exists
   set_fact: undionly_checksum_from_file={{ undionly_file_info.stat.checksum }}
   when:
-    - not config_only
     - undionly_file_info.stat.checksum is defined
 
 - name: ipxe - Build undionly.kpxe from ipxe project
@@ -105,35 +93,7 @@
     cd /tmp/ipxe/src
     make bin/undionly.kpxe
   when:
-    - not config_only
     - undionly_checksum_from_file != ipxe_undionly_checksum
-
-- name: ipxe - Checksum bin-x86_64-efi/snp.efi
-  ansible.builtin.stat:
-    path: /tmp/ipxe/src/bin-x86_64-efi/snp.efi
-    get_checksum: yes
-  register: snp_file_info
-  when:
-    - not config_only
-
-- name: ipxe - initialise snp_checksum_from_file
-  set_fact: snp_checksum_from_file=init
-  when:
-    - not config_only
-
-- name: ipxe - set checksum if snp file exists
-  set_fact: snp_checksum_from_file={{ snp_file_info.stat.checksum }}
-  when:
-    - not config_only
-    - snp_file_info.stat.checksum is defined
-
-- name: ipxe - Build snp.kpxe from ipxe project
-  shell: |
-    cd /tmp/ipxe/src
-    make bin-x86_64-efi/snp.efi
-  when:
-    - not config_only
-    - snp_checksum_from_file != ipxe_snp_checksum
 
 - name: ipxe - copy files remote to remote
   copy:
@@ -142,11 +102,13 @@
     remote_src: yes
   with_list:
     - bin/undionly.kpxe
-    - bin-x86_64-efi/snp.efi
   when:
     - not config_only
 
-- name: ipxe - rename undionly.kpxe to undionly-ipxe.0
-  command: creates="/var/lib/tftpboot/undionly-ipxe.0" mv /var/lib/tftpboot/undionly.kpxe /var/lib/tftpboot/undionly-ipxe.0
-  when:
-    - not config_only
+- name: ipxe - recursively change ownership of tftproot directory
+  ansible.builtin.file:
+    path: /var/lib/tftpboot
+    state: directory
+    recurse: yes
+    owner: foreman-proxy
+    group: root

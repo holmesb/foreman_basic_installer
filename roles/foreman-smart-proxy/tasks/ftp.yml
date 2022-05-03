@@ -25,6 +25,12 @@
     regexp: '^ExecStart='
     line: ExecStart=/sbin/vsftpd /etc/vsftpd/vsftpd-anon.conf
 
+- name: ftp - create ftp directory
+  ansible.builtin.file:
+    path: /var/ftp
+    state: directory
+    mode: '0755'
+
 - name: ftp - start service
   ansible.builtin.systemd:
     name: vsftpd

@@ -19,6 +19,22 @@
   with_items: "{{ groups['all'] }}"
   when: media_server_local_resolution and item == inventory_hostname and media_server_enabled
 
+- name: Create dhcp leases directory if it does not exist
+  ansible.builtin.file:
+    path: /var/lib/dhcpd
+    state: directory
+    mode: '0755'
+    owner: dhcpd
+    group: dhcpd
+
+- name: Create leases file
+  ansible.builtin.file:
+    path: /var/lib/dhcpd/dhcpd.leases
+    state: touch
+    mode: u=rw,g=r
+    owner: dhcpd
+    group: dhcpd
+
 - name: Update Host File - include smart-proxy  name resolution
   lineinfile:
     path: "/etc/hosts"
@@ -116,22 +132,29 @@
     groups: foreman
     append: yes
 
+- name: Installing proxy fails unless permissioned to foreman, and foreman-installer changes wrongly itself
+  ansible.builtin.command: watch -n 1 chown -R puppet:foreman /etc/puppetlabs/puppet/ssl/private_keys/
+  async: 120
+  poll: 0
+  retries: 100
+  delay: 2
+
 - name: Install foreman smart proxy
-  shell: >
-        foreman-installer
-        --no-enable-foreman
-        --no-enable-foreman-cli
-        --no-enable-foreman-plugin-bootdisk
-        --no-enable-foreman-plugin-setup
-        --enable-puppet
-        --puppet-server-ca=false
-        --puppet-server=true
-        --puppet-server-foreman-url=https://{{ foreman_host }}
-        --enable-foreman-proxy
-        --foreman-proxy-http=true
-        --foreman-proxy-puppetca=false
-        --foreman-proxy-foreman-base-url="https://{{ foreman_host }}"
-        --foreman-proxy-trusted-hosts={{ foreman_host }}
+  shell: |
+        foreman-installer \
+        --no-enable-foreman \
+        --no-enable-foreman-cli \
+        --no-enable-foreman-plugin-bootdisk \
+        --no-enable-foreman-plugin-setup \
+        --enable-puppet \
+        --puppet-server-ca=false \
+        --puppet-server=true \
+        --puppet-server-foreman-url=https://{{ foreman_host }} \
+        --enable-foreman-proxy \
+        --foreman-proxy-http=true \
+        --foreman-proxy-puppetca=false \
+        --foreman-proxy-foreman-base-url="https://{{ foreman_host }}" \
+        --foreman-proxy-trusted-hosts={{ foreman_host }} \
         --foreman-proxy-register-in-foreman=false
   args:
     executable: /bin/bash
@@ -140,15 +163,15 @@
     - not config_only
 
 - name: Install foreman smart proxy - Same Host
-  shell: >
-        foreman-installer
-        --enable-foreman-proxy
-        --foreman-proxy-http=true
-        --foreman-proxy-puppetca=false
-        --foreman-proxy-foreman-base-url="https://{{ foreman_host }}"
-        --foreman-proxy-trusted-hosts={{ foreman_host }}
-        --foreman-proxy-register-in-foreman=false
-        --verbose-log-level
+  shell: |
+        foreman-installer \
+          --enable-foreman-proxy \
+          --foreman-proxy-http=true \
+          --foreman-proxy-puppetca=false \
+          --foreman-proxy-foreman-base-url="https://{{ foreman_host }}" \
+          --foreman-proxy-trusted-hosts={{ foreman_host }} \
+          --foreman-proxy-register-in-foreman=false \
+          --verbose-log-level
   args:
     executable: /bin/bash
   when:
@@ -191,12 +214,6 @@
   notify:
   - Recursively change ownership of a puppet private keys dir
 
-#- name: Add single-host subnet to DHCP configuration for proxy, otherwise isc-dhcp-server service fails to start
-#  blockinfile:
-#    path: /etc/dhcp/dhcpd.conf
-#    block: |
-#      subnet "{{ ipaddress }}" netmask 255.255.255.255 {}"
-
 - name: Create /etc/dhcp/dhcpd.conf if it doesn't exist
   ansible.builtin.file:
     path: /etc/dhcp/dhcpd.conf
@@ -205,7 +222,7 @@
     group: foreman-proxy
   when: proxy_dhcp
 
-- name: Add single-host subnet to DHCP configuration for proxy, otherwise isc-dhcp-server service fails to start
+- name: Repeatedly add single-host subnet to DHCP configuration for proxy, otherwise isc-dhcp-server service fails to start
   ansible.builtin.shell: watch -n 2 'grep -qF subnet\ {{ ipaddress }} /etc/dhcp/dhcpd.conf || echo "subnet {{ ipaddress }} netmask 255.255.255.255 {}" | tee -a /etc/dhcp/dhcpd.conf'\
   async: 120
   poll: 0
