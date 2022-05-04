@@ -18,6 +18,13 @@
     line: kernel=ftp://{{ foreman_host }}/{{ item.os_version }}/b.b00
     create: yes
 
+- name: ftp_add_ipxe_os - prevent "simple offset" freeze during vmware install
+  ansible.builtin.lineinfile:
+    path: /var/ftp/boot-{{ item.os_version}}.cfg
+    regexp: '^norts='
+    line: norts=1
+    create: yes
+
 - name: ftp_add_ipxe_os - Retrieve boot configuration file locally since ansible ini module cannot operate on remote files
   fetch:
     src: /var/ftp/boot-{{ item.os_version }}.cfg

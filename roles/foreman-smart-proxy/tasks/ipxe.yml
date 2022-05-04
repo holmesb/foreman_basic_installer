@@ -42,8 +42,8 @@
     git reset --hard {{ ipxe_git_commit_checksum }}
   register: ipxe_switch_head
   when:
-    - not ipxe_git_commit_checksum[:7] in ipxe_current_branch.stdout
     - ipxe_dir.stat.exists
+    - not ipxe_git_commit_checksum[:7] in ipxe_current_branch.stdout
     - ipxe_directory.examined != 0  # when not empty
 
 - name: ipxe - clone_ipxe - clone ipxe if dir does not exist or is empty
@@ -54,17 +54,51 @@
   when:
     - (not ipxe_dir.stat.exists) or (ipxe_directory.examined == 0)  # when empty
 
+- name: ipxe - Delete general.h config file. Needed because cannot make uefi binary (snp.efi) with flags needed for legacy one that are added later in this task
+  ansible.builtin.file:
+    path: /tmp/ipxe/src/config/local/general.h
+    state: absent
+
 - name: ipxe - Patch ipxe to enable FTP functionality
   ansible.builtin.lineinfile:
     path: /tmp/ipxe/src/config/local/general.h
     regexp: '^.*DOWNLOAD_PROTO_FTP'
     line: "#define  DOWNLOAD_PROTO_FTP"
+    create: yes
+
+- name: ipxe - Patch ipxe to disable IPv6 functionality
+  ansible.builtin.lineinfile:
+    path: /tmp/ipxe/src/config/local/general.h
+    regexp: '^.*NET_PROTO_IPV6'
+    line: "#undef NET_PROTO_IPV6"
+    create: yes
+  when: not enable_ipv6_in_ipxe
+
+- name: ipxe - Checksum bin-x86_64-efi/snp.efi
+  ansible.builtin.stat:
+    path: /tmp/ipxe/src/bin-x86_64-efi/snp.efi
+    get_checksum: yes
+  register: snp_file_info
+
+- name: ipxe - initialise snp_checksum_from_file
+  set_fact: snp_checksum_from_file=init
+
+- name: ipxe - set checksum if snp file exists
+  set_fact: snp_checksum_from_file={{ snp_file_info.stat.checksum }}
+  when: snp_file_info.stat.checksum is defined
+
+- name: ipxe - Build snp.kpxe from ipxe project
+  shell: |
+    cd /tmp/ipxe/src
+    make bin-x86_64-efi/snp.efi
+  when: snp_checksum_from_file != ipxe_snp_checksum
 
 - name: ipxe - Patch ipxe to enable Syslinux Comboot support
   ansible.builtin.lineinfile:
     path: /tmp/ipxe/src/config/local/general.h
     regexp: '^.*IMAGE_COMBOOT'
     line: "#define  IMAGE_COMBOOT"
+    create: yes
 
 - name: ipxe - Patch ipxe to increase MAX_MODULES
   ansible.builtin.lineinfile:
@@ -94,6 +128,7 @@
     make bin/undionly.kpxe
   when:
     - undionly_checksum_from_file != ipxe_undionly_checksum
+    - not config_only
 
 - name: ipxe - copy files remote to remote
   copy:
@@ -102,6 +137,7 @@
     remote_src: yes
   with_list:
     - bin/undionly.kpxe
+    - bin-x86_64-efi/snp.efi
   when:
     - not config_only
 
