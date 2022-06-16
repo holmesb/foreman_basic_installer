@@ -36,3 +36,4 @@
     name: vsftpd
     state: started
     daemon_reload: yes
+    enabled: yes
