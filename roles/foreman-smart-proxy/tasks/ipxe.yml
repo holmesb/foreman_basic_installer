@@ -4,7 +4,7 @@
     insertafter: 'filename "pxelinux.0"[\r\n]+}'
     block: |
       if exists user-class and option user-class = "iPXE" {
-        filename "http://uk1sxlx00219.corpnet2.com/unattended/iPXE?bootstrap=1";  # Replace with actual FQDN of Foreman Server
+        filename "http://{{ foreman_host }}/unattended/iPXE?bootstrap=1";  # Replace with actual FQDN of Foreman Server
       } elsif option architecture = 00:06 {
         filename "ipxe.efi";
       } elsif option architecture = 00:07 {
